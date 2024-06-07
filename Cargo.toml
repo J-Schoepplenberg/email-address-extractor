@@ -1,0 +1,12 @@
+[package]
+name = "email-address-extractor"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+env_logger = "0.11.3"
+log = "0.4.21"
+infer = "0.16.0"
+pdf-extract = "0.7.7"
+regex = "1.10.4"
+zip = "2.1.3"
