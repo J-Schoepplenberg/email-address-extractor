@@ -1,3 +1,4 @@
+use log::debug;
 use pdf_extract::extract_text_from_mem;
 use std::fs::{self, File};
 use std::io::{self, BufReader, Read};
@@ -8,6 +9,8 @@ use zip::ZipArchive;
 #[derive(Debug)]
 pub enum FileType {
     PlainText,
+    Xml,
+    Html,
     Pdf,
     Xlsx,
     Odt,
@@ -63,6 +66,8 @@ impl Document {
             _ if infer::odf::is_odt(buffer) => FileType::Odt,
             _ if infer::archive::is_pdf(buffer) => FileType::Pdf,
             _ if infer::archive::is_zip(buffer) => FileType::Zip,
+            _ if infer::text::is_xml(buffer) => FileType::Xml,
+            _ if infer::text::is_html(buffer) => FileType::Html,
             _ if infer::get(buffer).is_none() => FileType::PlainText,
             _ => FileType::Unsupported,
         }
@@ -80,7 +85,9 @@ impl Document {
             FileType::Zip | FileType::Xlsx | FileType::Odt | FileType::Docx | FileType::Pptx => {
                 Self::process_zip(reader)
             }
-            FileType::PlainText => Self::process_plain_text(buffer),
+            FileType::PlainText | FileType::Xml | FileType::Html => {
+                Self::process_plain_text(buffer)
+            }
             FileType::Pdf => Self::process_pdf(buffer),
             FileType::Unsupported => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -90,7 +97,10 @@ impl Document {
     }
 
     /// Extracts plain text from a given buffer.
+    ///
+    /// We assume that the byte slice is valid UTF-8.
     fn process_plain_text(buffer: &[u8]) -> io::Result<Vec<String>> {
+        debug!("here");
         Ok(String::from_utf8_lossy(buffer)
             .lines()
             .map(String::from)
@@ -113,27 +123,30 @@ impl Document {
 
     /// Extracts text from a zip file.
     ///
-    /// Many file types are actually zip archives (e.g. ODT, DOCX, PPTX) containing xml files.
+    /// Many file types are actually zip archives (e.g. odt, docx, pptx) containing xml files.
     fn process_zip(reader: BufReader<File>) -> io::Result<Vec<String>> {
         let file = reader.into_inner();
-        let mut archive = ZipArchive::new(file).map_err(|err| {
+        let mut zip_archive = ZipArchive::new(file).map_err(|err| {
             io::Error::new(
                 io::ErrorKind::Other,
-                format!("Failed to read ZIP archive. {}.", err),
+                format!("Failed to read ZIP archive: {}.", err),
             )
         })?;
-        let mut result = Vec::new();
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i).map_err(|err| {
+        let mut xml_data = Vec::new();
+        for i in 0..zip_archive.len() {
+            let mut archive_file = zip_archive.by_index(i).map_err(|err| {
                 io::Error::new(
                     io::ErrorKind::Other,
-                    format!("Failed to access file in archive. {}.", err),
+                    format!("Failed to access file in archive: {}.", err),
                 )
             })?;
-            let mut buf = String::new();
-            file.read_to_string(&mut buf)?;
-            result.push(buf);
+            // Ensure we only read valid UTF-8 streams
+            if archive_file.name().ends_with(".xml") {
+                let mut buffer = String::new();
+                archive_file.read_to_string(&mut buffer)?;
+                xml_data.push(buffer);
+            }
         }
-        Ok(result)
+        Ok(xml_data)
     }
 }
