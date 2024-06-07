@@ -99,6 +99,8 @@ impl Document {
     /// Extracts plain text from a given buffer.
     ///
     /// We assume that the byte slice is valid UTF-8.
+    /// 
+    /// Invalid UTF-8 sequences get replaced with �.
     fn process_plain_text(buffer: &[u8]) -> io::Result<Vec<String>> {
         debug!("here");
         Ok(String::from_utf8_lossy(buffer)
@@ -124,12 +126,14 @@ impl Document {
     /// Extracts text from a zip file.
     ///
     /// Many file types are actually zip archives (e.g. odt, docx, pptx) containing xml files.
+    /// 
+    /// May fail if the zip archive cannot be read, files cannot be accessed or invalid UTF-8 is read.
     fn process_zip(reader: BufReader<File>) -> io::Result<Vec<String>> {
         let file = reader.into_inner();
         let mut zip_archive = ZipArchive::new(file).map_err(|err| {
             io::Error::new(
                 io::ErrorKind::Other,
-                format!("Failed to read ZIP archive: {}.", err),
+                format!("Failed to read zip archive: {}.", err),
             )
         })?;
         let mut xml_data = Vec::new();

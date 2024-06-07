@@ -47,8 +47,8 @@ This project is inspired by [Have I Been Pwned](https://github.com/HaveIBeenPwne
 
 Currently, there is no neat way in pure Rust to handle multiple file types with a one-size-fits-all solution. Here, we use magic numbers to identify the MIME type of the file, and then try to extract the textual content based on that knowledge. Not all file types use the same encoding, and some file formats are actually zip archives containing several different file types, such as xml.
 
-To extract email addresses from the text content, we use the well-known regular expression `\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b` which matches *any* email address sufficiently well. Formulating a *perfect* regular expression to validate an email address is actually not trivial. [The](https://www.regular-expressions.info/email.html) [subject](https://emailregex.com/) [is](https://stackoverflow.com/a/201378) [controversial](https://html.spec.whatwg.org/multipage/input.html#e-mail-state-(type%3Demail)). The only way to really validate an email address is to send an email to it, which we are obviously not going to do.
+To extract email addresses from text, we use the well-known regular expression `\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b` which matches *any* email address sufficiently well. Formulating a *perfect* regular expression to validate an email address is actually not trivial. [The](https://www.regular-expressions.info/email.html) [subject](https://emailregex.com/) [is](https://stackoverflow.com/a/201378) [controversial](https://html.spec.whatwg.org/multipage/input.html#e-mail-state-(type%3Demail)). The only way to really validate an email address is to send an email to it, which we are obviously not going to do.
 
 ## Roadmap
 
-- [] Handle multiple files within a folder
+- [ ] Extract email addresses from multiple files simultaneously
