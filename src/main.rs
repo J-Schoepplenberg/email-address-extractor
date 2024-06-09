@@ -14,7 +14,7 @@ use std::{
 /// See: https://www.regular-expressions.info/email.html for a discussion about how to find an email address.
 ///
 /// Uses a HashSet to handle deduplication inherently without sorting and deduping the list explicitly.
-fn extract_emails(content: &Vec<String>) -> Vec<String> {
+fn extract_emails(content: &[String]) -> Vec<String> {
     let regex = regex::Regex::new(r"(\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b)").unwrap(); // won't panic
     content
         .iter()

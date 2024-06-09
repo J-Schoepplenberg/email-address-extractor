@@ -21,7 +21,7 @@ pub struct PdfFile<'a>(&'a [u8]);
 impl<'a> AsRef<[u8]> for ZipFile<'a> {
     /// Converts a `ZipFile` to its byte slice reference.
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        self.0
     }
 }
 
@@ -56,7 +56,7 @@ impl<'a> ProcessFile<'a> for TextFile<'a> {
     ///
     /// Invalid UTF-8 sequences get replaced with �.
     fn process(&'a self) -> io::Result<Vec<String>> {
-        Ok(String::from_utf8_lossy(&self.0)
+        Ok(String::from_utf8_lossy(self.0)
             .lines()
             .map(String::from)
             .collect())
@@ -66,7 +66,7 @@ impl<'a> ProcessFile<'a> for TextFile<'a> {
 impl<'a> ProcessFile<'a> for PdfFile<'a> {
     /// Attempts to parse the given byte slice as a pdf file and extract its text.
     fn process(&'a self) -> io::Result<Vec<String>> {
-        extract_text_from_mem(&self.0)
+        extract_text_from_mem(self.0)
             .map(|text| vec![text])
             .map_err(|err| {
                 io::Error::new(
