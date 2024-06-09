@@ -38,6 +38,7 @@ impl<'a> ProcessFile<'a> for ZipFile<'a> {
         let reader = Cursor::new(self.0);
         let mut archive = ZipArchive::new(reader)?;
         let mut xml = Vec::new();
+        // Step through each file contained in the archive.
         for i in 0..archive.len() {
             let mut file = archive.by_index(i)?;
             // Ensures we only read valid UTF-8 streams.
