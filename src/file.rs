@@ -89,12 +89,12 @@ impl<'a> TryFrom<&'a [u8]> for FileType<'a> {
     ///
     /// Supported:
     ///     - plain text (e.g. txt, csv, sql, json, xml, html)
-    ///     - zip archives containing xml (e.g. odp, ods, odt, docx)
+    ///     - zip archives containing xml (e.g. odp, ods, odt, docx, xlsx)
     ///     - pdf files
     fn try_from(bytes: &'a [u8]) -> io::Result<FileType<'a>> {
         if let Some(t) = infer::get(bytes) {
             match t.mime_type() {
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" // xlsl
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" // xlsx
                 | "application/vnd.oasis.opendocument.presentation" // odp
                 | "application/vnd.oasis.opendocument.spreadsheet" // ods
                 | "application/vnd.oasis.opendocument.text" // odt
