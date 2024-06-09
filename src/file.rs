@@ -1,117 +1,72 @@
 use pdf_extract::extract_text_from_mem;
-use std::fs::{self, File};
-use std::io::{self, BufReader, Read};
-use std::path::Path;
+use std::io::{self, Cursor, Read};
 use zip::ZipArchive;
 
-/// Represents the mime type of a file.
-#[derive(Debug)]
-pub enum FileType {
-    PlainText,
-    Xml,
-    Html,
-    Pdf,
-    Xlsx,
-    Odt,
-    Docx,
-    Pptx,
-    Zip,
-    Unsupported,
+/// Represents different file types that can be processed.
+pub enum FileType<'a> {
+    Zip(ZipFile<'a>),
+    Text(TextFile<'a>),
+    Pdf(PdfFile<'a>),
 }
 
-/// Represents a file with its content and other metadata.
-#[derive(Debug)]
-pub struct Document {
-    pub content: Vec<String>,
-    pub metadata: fs::Metadata,
-    pub size: u64,
-    pub mime_type: FileType,
+/// Represents a zip file as a byte slice reference.
+pub struct ZipFile<'a>(&'a [u8]);
+
+/// Represents a text file as a byte slice reference.
+pub struct TextFile<'a>(&'a [u8]);
+
+/// Represents a pdf file as a byte slice reference.
+pub struct PdfFile<'a>(&'a [u8]);
+
+impl<'a> AsRef<[u8]> for ZipFile<'a> {
+    /// Converts a `ZipFile` to its byte slice reference.
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
 }
 
-impl Document {
-    /// Opens the file given by the specified path.
-    ///
-    /// Returns a File struct containing the already extracted content and other metadata.
-    ///
-    /// May fail if the path does not exist or if the file cannot be read.
-    pub fn open<P: AsRef<Path>>(file: P) -> io::Result<Self> {
-        let path = file.as_ref();
-        let file = fs::File::open(path)?;
-        let mut reader = BufReader::new(file);
-        let mut buffer = vec![];
-        reader.read_to_end(&mut buffer)?;
-        let mime_type = Self::identify_mime_type(&buffer);
-        let content = Self::process_file(&mime_type, reader, &buffer)?;
-        let metadata = fs::metadata(path)?;
-        let size = metadata.len();
-        Ok(Document {
-            content,
-            metadata,
-            size,
-            mime_type,
-        })
-    }
+/// Trait for processing different file types.
+pub trait ProcessFile<'a> {
+    /// Attempts to process the given byte slice and return a vector of strings containing the extracted text.
+    fn process(&'a self) -> io::Result<Vec<String>>;
+}
 
-    /// Identifies file types using file signatures, also known as magic numbers.
-    ///
-    /// See: https://en.wikipedia.org/wiki/List_of_file_signatures.
-    ///
-    /// Plain text files (e.g. txt, csv, json) do not have magic numbers.
-    fn identify_mime_type(buffer: &[u8]) -> FileType {
-        match buffer {
-            _ if infer::doc::is_docx(buffer) => FileType::Docx,
-            _ if infer::doc::is_pptx(buffer) => FileType::Pptx,
-            _ if infer::doc::is_xlsx(buffer) => FileType::Xlsx,
-            _ if infer::odf::is_odt(buffer) => FileType::Odt,
-            _ if infer::archive::is_pdf(buffer) => FileType::Pdf,
-            _ if infer::archive::is_zip(buffer) => FileType::Zip,
-            _ if infer::text::is_xml(buffer) => FileType::Xml,
-            _ if infer::text::is_html(buffer) => FileType::Html,
-            _ if infer::get(buffer).is_none() => FileType::PlainText,
-            _ => FileType::Unsupported,
-        }
-    }
-
-    /// Extracts the content of the file based on its mime type.
-    ///
-    /// Returns a vector of strings, where each string represents a line of text.
-    fn process_file(
-        mime_type: &FileType,
-        reader: BufReader<File>,
-        buffer: &[u8],
-    ) -> io::Result<Vec<String>> {
-        match mime_type {
-            FileType::Zip | FileType::Xlsx | FileType::Odt | FileType::Docx | FileType::Pptx => {
-                Self::process_zip(reader)
+impl<'a> ProcessFile<'a> for ZipFile<'a> {
+    /// Attempts to parse a given byte slice as a zip archive and extracts the content of its xml files as strings.
+    fn process(&'a self) -> io::Result<Vec<String>> {
+        // Makes the byte slice readable by wrapping it with Cursor.
+        let reader = Cursor::new(self.0);
+        let mut archive = ZipArchive::new(reader)?;
+        let mut xml = Vec::new();
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i)?;
+            // Ensures we only read valid UTF-8 streams.
+            if file.name().ends_with(".xml") {
+                let mut buffer = String::new();
+                file.read_to_string(&mut buffer)?;
+                xml.push(buffer);
             }
-            FileType::PlainText | FileType::Xml | FileType::Html => {
-                Self::process_plain_text(buffer)
-            }
-            FileType::Pdf => Self::process_pdf(buffer),
-            FileType::Unsupported => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Unsupported file type.",
-            )),
         }
+        Ok(xml)
     }
+}
 
-    /// Extracts plain text from a given buffer.
-    ///
-    /// We assume that the byte slice is valid UTF-8.
+impl<'a> ProcessFile<'a> for TextFile<'a> {
+    /// Converts a given byte slice to a string and splits it into lines.
     ///
     /// Invalid UTF-8 sequences get replaced with �.
-    fn process_plain_text(buffer: &[u8]) -> io::Result<Vec<String>> {
-        Ok(String::from_utf8_lossy(buffer)
+    fn process(&'a self) -> io::Result<Vec<String>> {
+        Ok(String::from_utf8_lossy(&self.0)
             .lines()
             .map(String::from)
             .collect())
     }
+}
 
-    /// Extracts text from a PDF file.
-    ///
-    /// May fail if the PDF is encrypted and due to other reasons.
-    fn process_pdf(buffer: &[u8]) -> io::Result<Vec<String>> {
-        extract_text_from_mem(buffer)
+impl<'a> ProcessFile<'a> for PdfFile<'a> {
+    /// Attempts to parse the given byte slice as a pdf file and extract its text.
+    fn process(&'a self) -> io::Result<Vec<String>> {
+        extract_text_from_mem(&self.0)
             .map(|text| vec![text])
             .map_err(|err| {
                 io::Error::new(
@@ -120,35 +75,67 @@ impl Document {
                 )
             })
     }
+}
 
-    /// Extracts text from a zip file.
+// Implementing `TryFrom` provides an equivalent `TryInto` implementation for free.
+impl<'a> TryFrom<&'a [u8]> for FileType<'a> {
+    type Error = io::Error;
+
+    /// Attempts to convert the given byte buffer into a supported `FileType` without panicking.
     ///
-    /// Many file types are actually zip archives (e.g. odt, docx, pptx) containing xml files.
+    /// Many file formats are actually zip archives containing other files such as xml.
+    /// 
+    /// For unknown MIME types we default to plain text assuming they contain valid UTF-8.
     ///
-    /// May fail if the zip archive cannot be read, files cannot be accessed or invalid UTF-8 is read.
-    fn process_zip(reader: BufReader<File>) -> io::Result<Vec<String>> {
-        let file = reader.into_inner();
-        let mut zip_archive = ZipArchive::new(file).map_err(|err| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to read zip archive: {}.", err),
-            )
-        })?;
-        let mut xml_data = Vec::new();
-        for i in 0..zip_archive.len() {
-            let mut archive_file = zip_archive.by_index(i).map_err(|err| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Failed to access file in archive: {}.", err),
-                )
-            })?;
-            // Ensure we only read valid UTF-8 streams
-            if archive_file.name().ends_with(".xml") {
-                let mut buffer = String::new();
-                archive_file.read_to_string(&mut buffer)?;
-                xml_data.push(buffer);
+    /// Supported:
+    ///     - plain text (e.g. txt, csv, sql, json, xml, html)
+    ///     - zip archives containing xml (e.g. odp, ods, odt, docx)
+    ///     - pdf files
+    fn try_from(bytes: &'a [u8]) -> io::Result<FileType<'a>> {
+        if let Some(t) = infer::get(bytes) {
+            match t.mime_type() {
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" // xlsl
+                | "application/vnd.oasis.opendocument.presentation" // odp
+                | "application/vnd.oasis.opendocument.spreadsheet" // ods
+                | "application/vnd.oasis.opendocument.text" // odt
+                | "application/msword" // docx
+                | "application/zip" => Ok(FileType::Zip(ZipFile(bytes))),
+                "application/pdf" => Ok(FileType::Pdf(PdfFile(bytes))),
+                "text/html" | "text/xml" => Ok(FileType::Text(TextFile(bytes))),
+                mime_type => Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!("Unsupported file type: {}", mime_type),
+                )),
             }
+        } else {
+            Ok(FileType::Text(TextFile(bytes)))
         }
-        Ok(xml_data)
+    }
+}
+
+impl<'a> FileType<'a> {
+    /// Attempts to process the different `FileType` variants.
+    ///
+    /// Extracts available text content from the files.
+    pub fn process(self) -> io::Result<Vec<String>> {
+        match self {
+            FileType::Text(text_file) => text_file.process(),
+            FileType::Zip(zip_file) => zip_file.process(),
+            FileType::Pdf(pdf_file) => pdf_file.process(),
+        }
+    }
+}
+
+/// Helper trait to avoid type annotations and allow function chaining.
+pub trait TryIntoFileType<'a> {
+    /// Attempts to convert the given byte buffer into a `FileType` using `try_into()`.
+    ///
+    /// Avoids panicking if the conversion fails.
+    fn try_into_filetype(self) -> io::Result<FileType<'a>>;
+}
+
+impl<'a> TryIntoFileType<'a> for &'a [u8] {
+    fn try_into_filetype(self) -> io::Result<FileType<'a>> {
+        self.try_into()
     }
 }
