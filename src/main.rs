@@ -7,6 +7,7 @@ use std::{
     env,
     fs::{self, File},
     io::{self, BufReader, Read, Write},
+    path::PathBuf,
 };
 
 /// Extracts email addresses from a list of strings using regex.
@@ -25,8 +26,12 @@ fn extract_emails(content: &[String]) -> Vec<String> {
 }
 
 /// Attempts to write the extracted emails to a plain text file.
-fn write_emails_to_file(emails: &[String]) -> io::Result<String> {
-    let output_path = env::current_dir()?.join("emails.txt");
+fn write_emails_to_file(emails: &[String], output_path: Option<&str>) -> io::Result<String> {
+    let output_path = match output_path {
+        Some(path) => PathBuf::from(path),
+        None => env::current_dir()?.join("emails.txt"),
+    };
+
     let mut file = File::create(&output_path)?;
 
     for email in emails {
@@ -42,7 +47,7 @@ fn write_emails_to_file(emails: &[String]) -> io::Result<String> {
 }
 
 /// Attempts to process the file from the given path and extract email addresses.
-fn process_file(input_path: &str) -> io::Result<()> {
+fn process_file(input_path: &str, output_path: Option<&str>) -> io::Result<()> {
     let metadata = fs::metadata(input_path)?;
     info!("File path: {}.", input_path);
     info!("File size: {} bytes.", metadata.len());
@@ -57,7 +62,7 @@ fn process_file(input_path: &str) -> io::Result<()> {
 
     let emails = extract_emails(&processed);
     if !emails.is_empty() {
-        match write_emails_to_file(&emails) {
+        match write_emails_to_file(&emails, output_path) {
             Ok(path) => info!("Extracted emails written to {} successfully.", path),
             Err(e) => error!("Failed to write emails to file. {}.", e),
         }
@@ -75,13 +80,16 @@ fn main() {
         .init();
 
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        error!("Path is missing. Usage: \"{} <path\\to\\file>\".", args[0]);
+
+    if args.len() < 2 || args.len() > 3 {
+        error!("Usage: \"{} <input_path> [output_path]\".", args[0]);
         std::process::exit(1);
     }
-    let input_path = &args[1];
 
-    if let Err(e) = process_file(input_path) {
+    let input_path = &args[1];
+    let output_path = args.get(2).map(|s| s.as_str());
+
+    if let Err(e) = process_file(input_path, output_path) {
         error!("Application error: {}.", e);
         std::process::exit(1);
     }
