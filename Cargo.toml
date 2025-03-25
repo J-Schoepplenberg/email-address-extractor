@@ -1,7 +1,7 @@
 [package]
 name = "email-address-extractor"
 version = "1.0.2"
-authors = ["Jannis Schoepplenberg <jschoe@proton.me>"]
+authors = ["Jannis Schoepplenberg"]
 description = "A blazingly fast command line tool written in pure safe Rust to automatically extract email addresses from files in a given path."
 keywords = ["extraction", "email", "files", "parsing", "text-processing"]
 categories = ["email", "parsing", "text-processing", "command-line-utilities", "filesystem"]
